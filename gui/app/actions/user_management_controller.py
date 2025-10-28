@@ -3,9 +3,9 @@ from __future__ import annotations  # Postpone type evaluation; speeds imports a
 import crypt  # Provides SHA-512 shadow hashing (Linux glibc crypt); avoids storing plaintext passwords.
 from PySide6.QtCore import QObject, Signal, Slot  # Qt base class + typed signals/slots for evented workflow.
 
-from app.services.dbus_universal_adapter import (  # Generic D-Bus caller that discovers interfaces via Introspection.
-    DbusUniversalAdapter
-)
+     # Generic D-Bus caller that discovers interfaces via Introspection.
+from app.services.dbus_universal_adapter import (DbusUniversalAdapter)
+   
 
 
 class UserManagementController(QObject):

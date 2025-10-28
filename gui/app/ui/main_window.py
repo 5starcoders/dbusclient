@@ -1,48 +1,82 @@
-from __future__ import annotations  # Enable postponed evaluation of type hints (faster imports, fewer circulars).
+from __future__ import annotations  # Postpone type evaluation for faster imports and flexibility.
 
-# Qt core/widget imports: these are our “DOM + events” building blocks in Qt.
-from PySide6.QtCore import Signal        # Signal is Qt’s typed event emitter (CustomEvent analogue).
-from PySide6.QtWidgets import (          # Widgets are native UI elements (window, container, button, etc.).
-    QMainWindow,                         # Top-level window frame with a central area.
-    QWidget,                             # Generic container (like a <div>).
-    QVBoxLayout,                         # Vertical layout manager (like CSS flex-direction: column).
-    QPushButton,                         # Clickable button (like <button>).
-    QMessageBox,                         # Simple modal dialog for info/error popups.
+from PySide6.QtCore import Signal                             # Qt typed event emitter (CustomEvent analogue).
+from PySide6.QtWidgets import (                               # Qt Widgets = native UI controls.
+    QMainWindow,                                              # Top-level window with a central area.
+    QWidget,                                                  # Generic container (like a <div>).
+    QVBoxLayout,                                              # Vertical layout manager (CSS flex-column analogue).
+    QFormLayout,                                              # Label–field layout (like <label> + <input> rows).
+    QLineEdit,                                                # Single-line text input (for username/realname/password).
+    QPushButton,                                              # Clickable button (CTA).
+    QMessageBox,                                              # Modal info/error dialogs.
 )
 
 
-class MainWindow(QMainWindow):           # Define a subclassed main window to host our UI.
-    create_user_requested = Signal()     # Public signal emitted when the user clicks "Create User".
+class MainWindow(QMainWindow):                                # Our top-level “page component”.
+    create_user_requested = Signal()                           # High-level intent emitted when user clicks CTA.
 
-    def __init__(self) -> None:          # Constructor for the main window.
-        super().__init__()               # Initialize the QMainWindow base class (native window setup).
-        self.setWindowTitle("D-Bus Service Studio")  # Set the window title (visible in frame/taskbar).
-        self._build_ui()                 # Build and assemble child widgets and layouts.
-        self._wire_signals()             # Connect widget events (signals) to handler methods (slots).
+    def __init__(self) -> None:                               # Constructor.
+        super().__init__()                                     # Initialize native window plumbing.
+        self.setWindowTitle("D-Bus Service Studio")            # Window title shown in frame/taskbar.
+        self._build_ui()                                       # Create widgets and layout.
+        self._wire_signals()                                   # Connect low-level events to handlers.
 
-    def _build_ui(self) -> None:         # Create the UI tree and apply layout rules.
-        central = QWidget(self)          # Root content widget that lives inside the main window.
-        layout = QVBoxLayout(central)    # Vertical layout to stack children (button now, more later).
-        layout.setContentsMargins(24, 24, 24, 24)  # Outer padding around content (like CSS padding).
-        layout.setSpacing(16)            # Gap between stacked widgets (like CSS gap).
+    def _build_ui(self) -> None:                               # Build the UI tree and apply layout rules.
+        central = QWidget(self)                                # Root content container (like <div id="root">).
+        root = QVBoxLayout(central)                            # Stack sections vertically (padding + spacing).
+        root.setContentsMargins(24, 24, 24, 24)                # Outer padding around content.
+        root.setSpacing(16)                                     # Gap between stacked sections.
 
-        self.btn_create_user = QPushButton("Create User", central)  # Primary CTA button.
-        layout.addWidget(self.btn_create_user)  # Insert button into layout so it gets measured/placed.
+        form = QFormLayout()                                   # Two-column form: labels on the left, fields on the right.
+        form.setSpacing(10)                                    # Gap between rows.
 
-        central.setLayout(layout)        # Ensure the central widget owns the layout manager.
-        self.setCentralWidget(central)   # Install central widget into the QMainWindow content area.
-        self.resize(420, 240)            # Give a comfortable initial size so the window isn’t tiny.
+        # Username field -------------------------------------------------------
+        self.inp_username = QLineEdit(central)                 # Input for Linux login name.
+        self.inp_username.setPlaceholderText("e.g., alice")    # Hint text (not persisted).
+        form.addRow("Username", self.inp_username)              # Label + field row.
 
-    def _wire_signals(self) -> None:     # Connect internal widget signals to our handlers.
-        # Button’s built-in 'clicked' SIGNAL → our private slot method.
-        self.btn_create_user.clicked.connect(self._on_create_user_clicked)
+        # Real name field ------------------------------------------------------
+        self.inp_realname = QLineEdit(central)                 # Input for the human-friendly full name.
+        self.inp_realname.setPlaceholderText("e.g., Alice Liddell")
+        form.addRow("Real name", self.inp_realname)             # Label + field row.
 
-    def _on_create_user_clicked(self) -> None:  # Private slot: react to button click.
-        # Re-emit a semantic, high-level signal that the controller layer can subscribe to.
-        self.create_user_requested.emit()
+        # Password field -------------------------------------------------------
+        self.inp_password = QLineEdit(central)                 # Input for password (will be hashed in-memory).
+        self.inp_password.setEchoMode(QLineEdit.Password)      # Hide characters while typing.
+        self.inp_password.setPlaceholderText("Password (will be hashed)")
+        form.addRow("Password", self.inp_password)              # Label + field row.
 
-    def show_info(self, text: str, title: str = "Info") -> None:  # Convenience UI helper for info popups.
-        QMessageBox.information(self, title, text)  # Show an informational dialog owned by this window.
+        root.addLayout(form)                                    # Place the form above the CTA button.
 
-    def show_error(self, text: str, title: str = "Error") -> None:  # Convenience UI helper for error popups.
-        QMessageBox.critical(self, title, text)     # Show an error dialog owned by this window.
+        # Primary action button ------------------------------------------------
+        self.btn_create_user = QPushButton("Create User", central)  # CTA; triggers the high-level intent.
+        root.addWidget(self.btn_create_user)                    # Add button under the form.
+
+        central.setLayout(root)                                 # Ensure central owns the layout manager.
+        self.setCentralWidget(central)                          # Install central widget into the window.
+        self.resize(520, 300)                                   # Comfortable default size.
+
+    def _wire_signals(self) -> None:                            # Connect widget signals to our slots.
+        self.btn_create_user.clicked.connect(self._on_create_user_clicked)  # Button click → private slot.
+
+    def _on_create_user_clicked(self) -> None:                   # Private slot: translate low-level click → high-level intent.
+        self.create_user_requested.emit()                        # Re-emit as a clean domain event (view → controller).
+
+    # --- Convenience getters for the launcher/controller ------------------------------------
+# strip will remove leading/trailing spaces
+    def get_username(self) -> str:                              # Read current username value from the field.
+        return self.inp_username.text().strip()
+
+    def get_realname(self) -> str:                              # Read current real name value from the field.
+        return self.inp_realname.text().strip()
+
+    def get_password(self) -> str:                              # Read current password value from the field.
+        return self.inp_password.text()
+
+    # --- UI-owned helpers for popups ---------------------------------------------------------
+
+    def show_info(self, text: str, title: str = "Info") -> None:  # Show informational dialog.
+        QMessageBox.information(self, title, text)
+
+    def show_error(self, text: str, title: str = "Error") -> None: # Show error dialog.
+        QMessageBox.critical(self, title, text)

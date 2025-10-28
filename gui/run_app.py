@@ -32,10 +32,25 @@ def main() -> int:
     # ---------- UI → Action (intent) ----------
     # For now, pass demo/static values. In a later step, these will come from inputs/config.
     def _on_create_user_requested() -> None:
-        username = "demo_user"                       # Temporary stub value (no logging).
-        realname = "Demo User"                       # Temporary stub value.
-        password = "demo-password"                   # Temporary stub value; will be hashed in Phase 3.
-        action.execute(username, realname, password) # Kick off the action (will emit started/succeeded/failed).
+        # Read current values from UI fields.
+        username = window.get_username()
+        realname = window.get_realname()
+        password = window.get_password()
+
+        # Basic validation before calling the controller.
+        if not username:
+            window.show_error("Please enter a username.", title="Missing Username")
+            return
+        if not realname:
+            window.show_error("Please enter a real name.", title="Missing Real Name")
+            return
+        if not password:
+            window.show_error("Please enter a password.", title="Missing Password")
+            return
+
+        # Fire the user-management workflow (controller will hash the password and call D-Bus).
+        controller.create_user(username, realname, password)
+
 
     window.create_user_requested.connect(_on_create_user_requested)  # Wire UI signal to controller entrypoint.
 
