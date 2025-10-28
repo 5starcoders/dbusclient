@@ -207,3 +207,16 @@ Every step will be small, explained, and logically connected to the previous one
 When the base “Create User” feature works, the same framework can power a complete system-management dashboard for KDE or other desktops.
 
 ---
+## Recent Changes (2025-10-27)
+
+- Replaced deprecated `datetime.utcnow()` with `datetime.now(UTC).isoformat()` to remove runtime warnings.
+- Reclassified dynamic/optional object probes to **`SKIPPED UnknownObject`** (no longer logged as errors) for clean health checks.
+- Fixed minor log wording/spacing (e.g., `WROTE SwitcherooControl.xml/json`).
+- Added operational notes for validation:
+  - **True-failure check:** `grep -F " : ERROR " /root/Projects/dbusclient/org/crawl.log | wc -l` (expect `0`)
+  - **Archive validated run:**
+    ```bash
+    STAMP="$(date +'%Y%m%d_%H%M%S')"
+    mkdir -p "/root/Projects/dbusclient/backups/$STAMP"
+    mv "/root/Projects/dbusclient/org" "/root/Projects/dbusclient/backups/$STAMP/org"
+    ```
