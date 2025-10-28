@@ -11,6 +11,7 @@ import subprocess
 import sys
 import time
 import xml.etree.ElementTree as ET
+from dataclasses import dataclass
 from typing import Dict, List, Optional, Set, Tuple
 
 # =========================
@@ -25,6 +26,45 @@ def run_cmd(cmd: List[str], timeout: int) -> Tuple[int, str, str]:
         return p.returncode, p.stdout, p.stderr
     except subprocess.TimeoutExpired:
         return 124, "", f"timeout: {' '.join(cmd)}"
+
+
+class IntrospectError:
+    """Base error type so callers can classify failures before logging."""
+
+    def is_unknown_object(self) -> bool:  # pragma: no cover - trivial override hook
+        return False
+
+
+@dataclass
+class GDBusCallError(IntrospectError):
+    """Structured error returned when a gdbus command fails."""
+
+    rc: int
+    stderr: str
+
+    def is_unknown_object(self) -> bool:
+        """True when the stderr describes an UnknownObject-style condition."""
+        low = (self.stderr or "").lower()
+        return (
+            "unknownobject" in low
+            or "org.freedesktop.dbus.error.unknownobject" in low
+            or "no such object" in low
+            or "not a valid object path" in low
+        )
+
+    def __str__(self) -> str:  # pragma: no cover - trivial formatting helper
+        detail = (self.stderr or "").strip() or "<no stderr>"
+        return f"gdbus rc={self.rc} err={detail}"
+
+
+@dataclass
+class SimpleIntrospectError(IntrospectError):
+    """Fallback error wrapper for non-gdbus failure cases."""
+
+    message: str
+
+    def __str__(self) -> str:  # pragma: no cover - trivial formatting helper
+        return self.message
 
 def bus_flag(bus: str) -> str:
     # Convert bus name to gdbus flag
@@ -141,7 +181,7 @@ def list_services(bus: str, include_activatable: bool, timeout: int) -> List[str
 # Introspection & Parsing
 # =========================
 
-def introspect(bus: str, service: str, obj_path: str, timeout: int) -> Tuple[Optional[str], Optional[str]]:
+def introspect(bus: str, service: str, obj_path: str, timeout: int) -> Tuple[Optional[str], Optional[IntrospectError]]:
     # Call Introspect method on object; return XML and optional error
     rc, out, err = run_cmd(
         ["gdbus", "call", bus_flag(bus),
@@ -151,10 +191,10 @@ def introspect(bus: str, service: str, obj_path: str, timeout: int) -> Tuple[Opt
         timeout
     )
     if rc != 0:
-        return None, f"gdbus rc={rc} err={err.strip()}"
+        return None, GDBusCallError(rc=rc, stderr=err)
     xml = decode_gdbus_tuple(out)
     if not isinstance(xml, str) or not xml.strip():
-        return None, "empty introspection"
+        return None, SimpleIntrospectError("empty introspection")
     return xml, None
 
 def parse_xml(xml: str) -> Tuple[List[str], List[Dict]]:
@@ -322,6 +362,9 @@ def crawl_service(bus: str, service: str, args, logf) -> Dict[str, int]:
     # 1) Introspect service root
     xml, err = introspect(bus, service, svc_ns, args.timeout)
     if err:
+        if err.is_unknown_object():
+            logf.write(f"[{bus}] {service} {svc_ns} : SKIPPED UnknownObject\n")
+            return stats
         stats["errors"] += 1
         logf.write(f"[{bus}] {service} {svc_ns} : ERROR {err}\n")
         return stats
@@ -349,14 +392,8 @@ def crawl_service(bus: str, service: str, args, logf) -> Dict[str, int]:
         child_path = f"{svc_ns}/{rel}"
         xml, err = introspect(bus, service, child_path, args.timeout)
         if err:
-            low = (err or "").lower()
             # Down-level dynamic/optional objects to SKIPPED (do not count as error)
-            if (
-                "unknownobject" in low
-                or "org.freedesktop.dbus.error.unknownobject" in low
-                or "no such object" in low
-                or "not a valid object path" in low
-            ):
+            if err.is_unknown_object():
                 logf.write(f"[{bus}] {service} {child_path} : SKIPPED UnknownObject\n")
                 continue
             # Any other failure is a real error
